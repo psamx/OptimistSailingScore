@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Optimist Results</title>
+  <style>
+    :root {
+      --bg: #f3efe5;
+      --ink: #102542;
+      --panel: #fffaf2;
+      --line: #d8cfbf;
+      --accent: #1e6f8f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top right, #ddeef5 0%, var(--bg) 45%, #efe2cc 100%);
+      color: var(--ink);
+      min-height: 100vh;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 1150px;
+      width: 100%;
+      margin: 24px auto;
+      padding: 0 12px;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero {
+      background: linear-gradient(145deg, #0f3957, #1f7a9f);
+      color: #f8fcff;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 25px rgba(16, 37, 66, 0.2);
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(1.4rem, 2vw + 0.7rem, 2rem);
+      letter-spacing: 0.03em;
+    }
+
+    .hero p { margin: 6px 0 0; opacity: 0.95; }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 2px 12px rgba(16, 37, 66, 0.08);
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 1.05rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .small { font-size: 0.82rem; opacity: 0.82; margin-top: 6px; }
+    .muted { opacity: 0.75; }
+
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    .tab-btn {
+      background: #d6e6ed;
+      color: #0f3957;
+      border: 1px solid #afcdd9;
+      font: inherit;
+      border-radius: 9px;
+      padding: 8px 10px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tab-btn.active { background: var(--accent); color: #fff; border-color: transparent; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      table-layout: auto;
+    }
+
+    th, td {
+      border-bottom: 1px solid #ece4d7;
+      padding: 9px;
+      text-align: left;
+      font-size: 0.72rem;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f4ecde;
+      font-size: 0.66rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .penalty {
+      display: block;
+      font-size: 0.62rem;
+      opacity: 0.75;
+      margin-top: 2px;
+    }
+
+    .score-value { display: inline; white-space: nowrap; }
+    .sailor-cell { min-width: 220px; }
+    .sailor-name { display: block; white-space: nowrap; }
+    .sailor-number { display: block; white-space: nowrap; }
+
+    .trend-up { color: #1b7f5b; font-weight: 700; }
+    .trend-down { color: #b2493a; font-weight: 700; }
+    .trend-equal { color: #6b7280; font-weight: 700; }
+
+    @media (max-width: 760px) {
+      .container { margin: 14px auto; padding: 0 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="hero">
+      <h1>Optimist Public Results</h1>
+      <p>Current regatta and ranking list results (public view).</p>
+      <p id="lastUpdated" class="small">Last updated: never</p>
+    </section>
+
+    <section class="card">
+      <div class="tabs">
+        <button id="currentTabBtn" class="tab-btn active" type="button">Current Regatta</button>
+        <button id="rankingTabBtn" class="tab-btn" type="button">Ranking List</button>
+      </div>
+
+      <section id="currentTabPanel">
+        <h2>Current Regatta</h2>
+        <p id="currentRegattaSummary" class="small muted"></p>
+        <div id="currentRegattaWrap"></div>
+      </section>
+
+      <section id="rankingTabPanel" hidden>
+        <h2>Ranking List (Last 18 Races)</h2>
+        <p id="rankingSummary" class="small muted"></p>
+        <div id="rankingWrap"></div>
+      </section>
+    </section>
+  </div>
+
+  <script>
+    const state = {
+      sailors: [],
+      races: [],
+      sailorRegattaNumbers: {},
+      currentRegattaInfo: null,
+      currentRegatta: { races: [], leaderboard: [], discardCount: 0 },
+      rankingList: { races: [], leaderboard: [], discardCount: 0 },
+      updatedAt: null
+    };
+
+    const dom = {
+      currentRegattaWrap: document.getElementById("currentRegattaWrap"),
+      rankingWrap: document.getElementById("rankingWrap"),
+      currentTabBtn: document.getElementById("currentTabBtn"),
+      rankingTabBtn: document.getElementById("rankingTabBtn"),
+      currentTabPanel: document.getElementById("currentTabPanel"),
+      rankingTabPanel: document.getElementById("rankingTabPanel"),
+      currentRegattaSummary: document.getElementById("currentRegattaSummary"),
+      rankingSummary: document.getElementById("rankingSummary"),
+      lastUpdated: document.getElementById("lastUpdated")
+    };
+
+    let activeTab = "current";
+
+    async function api(path) {
+      const response = await fetch(path, {
+        headers: { "content-type": "application/json" }
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Request failed");
+      return data;
+    }
+
+    function safeDate(value) {
+      if (!value) return "never";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? "unknown" : date.toLocaleString();
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function renderLeaderboardTable(target, races, leaderboard, summary, title, regattaId = null) {
+      if (!leaderboard || leaderboard.length === 0) {
+        target.innerHTML = '<p class="small muted">No data yet.</p>';
+        summary.textContent = title;
+        return;
+      }
+
+      const raceHeaders = races.map((r) => `<th>${escapeHtml(r.name)}</th>`).join("");
+      const rows = leaderboard.map((row, index) => {
+        const displaySailNumber =
+          regattaId && state.sailorRegattaNumbers[regattaId]?.[row.sailor.id]
+            ? state.sailorRegattaNumbers[regattaId][row.sailor.id]
+            : row.sailor.sailNumber || "No sail #";
+
+        const raceCells = row.racePoints.map((rp) => {
+          const label = rp.status === "OK" ? `${rp.position}` : rp.status;
+          const shownPoints = rp.discarded ? `(${rp.points})` : `${rp.points}`;
+          const penaltyLine =
+            rp.status !== "OK" ? `<span class="penalty">${escapeHtml(rp.status)}</span>` : "";
+          return `<td title="${escapeHtml(label)}"><span class="score-value">${shownPoints}</span>${penaltyLine}</td>`;
+        }).join("");
+
+        return `
+          <tr>
+            <td>${row.rank ?? (index + 1)}</td>
+            <td class="sailor-cell">
+              <strong class="sailor-name">${escapeHtml(row.sailor.name)}</strong>
+              <span class="small muted sailor-number">${escapeHtml(displaySailNumber)}</span>
+            </td>
+            ${raceCells}
+            <td>${row.netTotal}</td>
+            <td><strong>${row.net}</strong></td>
+            <td class="trend-${row.trend}" title="Previous rank: ${row.previousRank}">${row.trendSymbol} (${row.trendDeltaAbs ?? 0})</td>
+          </tr>
+        `;
+      }).join("");
+
+      target.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Sailor</th>
+              ${raceHeaders}
+              <th>Net Total</th>
+              <th>Net</th>
+              <th>Trend</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+
+      summary.textContent = title;
+    }
+
+    function renderLeaderboards() {
+      const regattaInfo = state.currentRegattaInfo;
+      const regattaRange = regattaInfo
+        ? `${regattaInfo.startDate} to ${regattaInfo.endDate}`
+        : "No regatta selected";
+      const regattaName = regattaInfo ? regattaInfo.name : "Current Regatta";
+      const regattaTitle = `${regattaName} (${regattaRange}) - ${state.currentRegatta.leaderboard.length} sailors, ${state.currentRegatta.races.length} races. Discards: ${state.currentRegatta.discardCount} (1 per 6 races).`;
+
+      renderLeaderboardTable(
+        dom.currentRegattaWrap,
+        state.currentRegatta.races,
+        state.currentRegatta.leaderboard,
+        dom.currentRegattaSummary,
+        regattaTitle,
+        regattaInfo?.id || null
+      );
+
+      const rankingTitle = `${state.rankingList.leaderboard.length} sailors, showing last ${state.rankingList.races.length} races (max 18). Discards: ${state.rankingList.discardCount} (1 per 6 races).`;
+      renderLeaderboardTable(
+        dom.rankingWrap,
+        state.rankingList.races,
+        state.rankingList.leaderboard,
+        dom.rankingSummary,
+        rankingTitle
+      );
+    }
+
+    function setActiveTab(tabName) {
+      activeTab = tabName;
+      const showCurrent = activeTab === "current";
+
+      dom.currentTabPanel.hidden = !showCurrent;
+      dom.rankingTabPanel.hidden = showCurrent;
+      dom.currentTabBtn.classList.toggle("active", showCurrent);
+      dom.rankingTabBtn.classList.toggle("active", !showCurrent);
+    }
+
+    async function refresh() {
+      const data = await api("/api/public-state");
+      state.sailors = data.sailors || [];
+      state.races = data.races || [];
+      state.sailorRegattaNumbers = data.sailorRegattaNumbers || {};
+      state.currentRegattaInfo = data.currentRegattaInfo;
+      state.currentRegatta = data.currentRegatta || { races: [], leaderboard: [], discardCount: 0 };
+      state.rankingList = data.rankingList || { races: [], leaderboard: [], discardCount: 0 };
+      state.updatedAt = data.updatedAt;
+
+      renderLeaderboards();
+      dom.lastUpdated.textContent = `Last updated: ${safeDate(state.updatedAt)}`;
+    }
+
+    dom.currentTabBtn.addEventListener("click", () => setActiveTab("current"));
+    dom.rankingTabBtn.addEventListener("click", () => setActiveTab("ranking"));
+
+    setActiveTab("current");
+    refresh().catch((error) => {
+      dom.currentRegattaSummary.textContent = `Failed to load data: ${error.message}`;
+      dom.rankingSummary.textContent = `Failed to load data: ${error.message}`;
+    });
+  </script>
+</body>
+</html>

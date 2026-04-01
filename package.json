@@ -1,0 +1,15 @@
+{
+  "name": "optimist-scoring-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate": "wrangler d1 migrations apply optimist-scores",
+    "db:migrate:local": "wrangler d1 migrations apply optimist-scores --local"
+  },
+  "devDependencies": {
+    "wrangler": "^4.10.0"
+  }
+}

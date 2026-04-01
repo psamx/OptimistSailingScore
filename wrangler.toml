@@ -1,0 +1,30 @@
+name = "optimist-scoring"
+main = "src/worker.js"
+compatibility_date = "2026-03-31"
+
+# Public-safe config for repository use.
+# Keep secrets out of this file and set them with:
+#   wrangler secret put GOOGLE_CLIENT_ID
+#   wrangler secret put GOOGLE_CLIENT_SECRET
+#   wrangler secret put AUTH_SECRET
+
+[vars]
+# Optional explicit callback URL. If empty, worker uses <origin>/auth/google/callback
+GOOGLE_REDIRECT_URI = ""
+
+# Optional access restrictions
+ALLOWED_EMAILS = ""
+ALLOWED_DOMAINS = ""
+
+# Optional session duration (hours)
+SESSION_TTL_HOURS = "12"
+
+[assets]
+directory = "public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "optimist-scores"
+database_id = "REPLACE_WITH_REMOTE_DATABASE_ID"
+preview_database_id = "REPLACE_WITH_PREVIEW_DATABASE_ID"

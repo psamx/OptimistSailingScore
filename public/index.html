@@ -1,0 +1,1296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Optimist Scoring</title>
+  <style>
+    :root {
+      --bg: #f3efe5;
+      --ink: #102542;
+      --panel: #fffaf2;
+      --line: #d8cfbf;
+      --accent: #1e6f8f;
+      --accent-2: #2d9f84;
+      --danger: #b2493a;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top right, #ddeef5 0%, var(--bg) 45%, #efe2cc 100%);
+      color: var(--ink);
+      min-height: 100vh;
+      padding: 0;
+    }
+
+    .container {
+      width: min(1150px, calc(100vw - 24px));
+      margin: 24px 0;
+      position: relative;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 0;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero {
+      background: linear-gradient(145deg, #0f3957, #1f7a9f);
+      color: #f8fcff;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 25px rgba(16, 37, 66, 0.2);
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(1.5rem, 2vw + 0.8rem, 2.25rem);
+      letter-spacing: 0.03em;
+    }
+
+    .hero p {
+      margin: 6px 0 0;
+      opacity: 0.95;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      box-shadow: 0 2px 12px rgba(16, 37, 66, 0.08);
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 1.1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    form {
+      display: grid;
+      gap: 10px;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 0.9rem;
+    }
+
+    input, select, button {
+      font: inherit;
+      border-radius: 9px;
+      border: 1px solid var(--line);
+      padding: 9px 10px;
+      background: #fff;
+      color: var(--ink);
+    }
+
+    button {
+      border: 0;
+      color: #fff;
+      background: var(--accent);
+      cursor: pointer;
+      transition: transform 0.08s ease, filter 0.2s ease;
+      font-weight: 600;
+    }
+
+    button:hover { filter: brightness(1.07); }
+    button:active { transform: translateY(1px); }
+
+    .danger { background: var(--danger); }
+    .secondary { background: var(--accent-2); }
+
+    .small {
+      font-size: 0.83rem;
+      opacity: 0.8;
+      margin-top: 6px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      table-layout: auto;
+    }
+
+    th, td {
+      border-bottom: 1px solid #ece4d7;
+      padding: 9px;
+      text-align: left;
+      font-size: 0.72rem;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f4ecde;
+      font-size: 0.66rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .muted { opacity: 0.75; }
+    .penalty {
+      display: block;
+      font-size: 0.62rem;
+      opacity: 0.75;
+      margin-top: 2px;
+    }
+    .score-value {
+      display: inline;
+      white-space: nowrap;
+    }
+    .sailor-cell {
+      min-width: 220px;
+    }
+    .sailor-name {
+      display: block;
+      white-space: nowrap;
+    }
+    .sailor-number {
+      display: block;
+      white-space: nowrap;
+    }
+
+    .trend-up { color: #1b7f5b; font-weight: 700; }
+    .trend-down { color: #b2493a; font-weight: 700; }
+    .trend-equal { color: #6b7280; font-weight: 700; }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tab-btn {
+      background: #d6e6ed;
+      color: #0f3957;
+      border: 1px solid #afcdd9;
+      font-weight: 600;
+    }
+
+    .tab-btn.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: transparent;
+    }
+
+
+    .chip {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 10px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      background: #fff;
+      font-size: 0.85rem;
+    }
+
+    .chip button {
+      background: transparent;
+      color: var(--danger);
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .chip button[data-edit-sailor] {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .participant-list {
+      margin-top: 8px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .participant-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 6px 10px;
+      font-size: 0.9rem;
+    }
+
+    .participant-item button {
+      background: transparent;
+      color: var(--danger);
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .sailor-list {
+      margin-top: 8px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .sailor-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 6px 10px;
+      font-size: 0.9rem;
+      gap: 8px;
+    }
+
+    .sailor-item-name {
+      overflow-wrap: anywhere;
+    }
+
+    .sailor-item button {
+      background: transparent;
+      color: var(--accent);
+      border: 0;
+      padding: 0;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .sailor-item button[data-delete-sailor] {
+      color: var(--danger);
+    }
+
+    .results-grid {
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #fff;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+
+    .result-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+    }
+
+    .result-row[hidden] {
+      display: none !important;
+    }
+
+    .result-row > * {
+      min-width: 0;
+    }
+
+    .result-row strong {
+      overflow-wrap: anywhere;
+    }
+
+    .result-row input,
+    .result-row select {
+      width: 100%;
+      max-width: 100%;
+    }
+
+    @media (max-width: 760px) {
+      .container { width: calc(100vw - 16px); margin: 14px 0; }
+      .result-row { grid-template-columns: 1fr; border-bottom: 1px dashed #e3d8c6; padding-bottom: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <section class="hero">
+      <h1>Optimist Class Scoring</h1>
+      <p>Manage sailors, add race results, and track the live leaderboard in Cloudflare D1.</p>
+      <p id="lastUpdated" class="small">Last updated: never</p>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <h2>Add Sailor</h2>
+        <form id="sailorForm">
+          <label>Name
+            <input name="name" required placeholder="Sailor name" />
+          </label>
+          <label>Club
+            <input name="club" placeholder="Club" />
+          </label>
+          <button type="submit">Add Sailor</button>
+        </form>
+        <label>Search Sailor
+          <input id="sailorSearch" placeholder="Type to search sailors" />
+        </label>
+        <p class="small">Sailors here can be updated (name edit).</p>
+        <div id="sailorList" class="sailor-list"></div>
+        <hr />
+        <p class="small"><strong>Merge Sailors</strong> (allowed only when they have no overlapping race scores).</p>
+        <div class="chips">
+          <select id="mergeFromSelect" aria-label="Merge from sailor"></select>
+          <select id="mergeIntoSelect" aria-label="Merge into sailor"></select>
+          <button id="mergeSailorBtn" type="button">Merge</button>
+        </div>
+      </article>
+
+      <article class="card">
+        <h2>Add Race Results</h2>
+        <form id="raceForm">
+          <label>Regatta
+            <select name="regattaSelect" id="regattaSelect"></select>
+          </label>
+          <label id="newRegattaWrap">New Regatta Name
+            <input name="newRegattaName" placeholder="e.g. Cyprus Spring Cup" />
+          </label>
+          <div class="tabs">
+            <button id="participantsTabBtn" class="tab-btn" type="button">Participants</button>
+            <button id="raceResultsTabBtn" class="tab-btn active" type="button">Race Results</button>
+          </div>
+
+          <section id="participantsTabPanel">
+            <div>
+              <div class="small">Regatta Participants</div>
+              <div class="chips">
+                <input id="participantSearch" placeholder="Search sailor" />
+                <select id="participantSelect"></select>
+                <button id="addParticipantBtn" type="button">Add Participant</button>
+              </div>
+              <div id="participantList" class="participant-list"></div>
+            </div>
+          </section>
+
+          <section id="raceResultsTabPanel">
+            <label>Existing Race (for update)
+              <select name="raceId" id="raceSelect">
+                <option value="">Create new race</option>
+              </select>
+            </label>
+            <label>Date
+              <input name="date" type="date" />
+            </label>
+            <label>Search Participant
+              <input id="raceResultSearch" placeholder="Type to filter score rows" />
+            </label>
+            <div>
+              <div class="small">Entered score is saved for each sailor. If score is empty for a penalty status, auto-scoring rules apply.</div>
+              <div id="resultsGrid" class="results-grid"></div>
+            </div>
+            <div class="chips">
+              <button id="saveRaceBtn" class="secondary" type="submit">Save Race</button>
+              <button id="cancelEditBtn" type="button" hidden>Cancel Edit</button>
+              <span id="autoSaveStatus" class="small muted"></span>
+            </div>
+          </section>
+        </form>
+      </article>
+    </section>
+
+    <section class="card">
+      <div class="tabs">
+        <button id="currentTabBtn" class="tab-btn active" type="button">Current Regatta</button>
+        <button id="rankingTabBtn" class="tab-btn" type="button">Ranking List</button>
+      </div>
+
+      <section id="currentTabPanel">
+        <h2>Current Regatta</h2>
+        <p id="currentRegattaSummary" class="small muted"></p>
+        <div id="currentRegattaWrap"></div>
+      </section>
+
+      <section id="rankingTabPanel" hidden>
+        <h2>Ranking List (Last 18 Races)</h2>
+        <p id="rankingSummary" class="small muted"></p>
+        <div id="rankingWrap"></div>
+      </section>
+    </section>
+
+    <section class="card">
+      <h2>Races</h2>
+      <div id="raceList" class="chips"></div>
+    </section>
+
+    <section class="card">
+      <h2>Actions</h2>
+      <div class="chips">
+        <button id="refreshBtn" type="button">Refresh</button>
+        <button id="resetBtn" type="button" class="danger">Reset All Data</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const state = {
+      sailors: [],
+      regattas: [],
+      races: [],
+      sailorRegattaNumbers: {},
+      regattaParticipants: {},
+      currentRegattaInfo: null,
+      currentRegatta: { races: [], leaderboard: [], discardCount: 0 },
+      rankingList: { races: [], leaderboard: [], discardCount: 0 },
+      updatedAt: null,
+      selectedParticipantIds: []
+    };
+
+    const dom = {
+      sailorForm: document.getElementById("sailorForm"),
+      raceForm: document.getElementById("raceForm"),
+      regattaSelect: document.getElementById("regattaSelect"),
+      participantsTabBtn: document.getElementById("participantsTabBtn"),
+      raceResultsTabBtn: document.getElementById("raceResultsTabBtn"),
+      participantsTabPanel: document.getElementById("participantsTabPanel"),
+      raceResultsTabPanel: document.getElementById("raceResultsTabPanel"),
+      raceSelect: document.getElementById("raceSelect"),
+      raceResultSearch: document.getElementById("raceResultSearch"),
+      newRegattaWrap: document.getElementById("newRegattaWrap"),
+      participantSearch: document.getElementById("participantSearch"),
+      participantSelect: document.getElementById("participantSelect"),
+      addParticipantBtn: document.getElementById("addParticipantBtn"),
+      participantList: document.getElementById("participantList"),
+      saveRaceBtn: document.getElementById("saveRaceBtn"),
+      cancelEditBtn: document.getElementById("cancelEditBtn"),
+      autoSaveStatus: document.getElementById("autoSaveStatus"),
+      sailorSearch: document.getElementById("sailorSearch"),
+      sailorList: document.getElementById("sailorList"),
+      mergeFromSelect: document.getElementById("mergeFromSelect"),
+      mergeIntoSelect: document.getElementById("mergeIntoSelect"),
+      mergeSailorBtn: document.getElementById("mergeSailorBtn"),
+      resultsGrid: document.getElementById("resultsGrid"),
+      currentRegattaWrap: document.getElementById("currentRegattaWrap"),
+      rankingWrap: document.getElementById("rankingWrap"),
+      currentTabBtn: document.getElementById("currentTabBtn"),
+      rankingTabBtn: document.getElementById("rankingTabBtn"),
+      currentTabPanel: document.getElementById("currentTabPanel"),
+      rankingTabPanel: document.getElementById("rankingTabPanel"),
+      raceList: document.getElementById("raceList"),
+      currentRegattaSummary: document.getElementById("currentRegattaSummary"),
+      rankingSummary: document.getElementById("rankingSummary"),
+      refreshBtn: document.getElementById("refreshBtn"),
+      resetBtn: document.getElementById("resetBtn"),
+      lastUpdated: document.getElementById("lastUpdated")
+    };
+
+    const statuses = ["OK", "DNC", "DNS", "DNF", "DSQ", "BFD", "UFD"];
+    let activeTab = "current";
+    let activeRaceFormTab = "results";
+    let editingRaceId = null;
+    let autoSaveTimer = null;
+    let autoSaveInFlight = false;
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        headers: { "content-type": "application/json" },
+        ...options
+      });
+      if (response.status === 401) {
+        const next = encodeURIComponent(window.location.pathname + window.location.search);
+        window.location.href = `/auth/google/start?next=${next}`;
+        throw new Error("Redirecting to login...");
+      }
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Request failed");
+      return data;
+    }
+
+    function safeDate(value) {
+      if (!value) return "never";
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? "unknown" : date.toLocaleString();
+    }
+
+    function renderSailors() {
+      if (state.sailors.length === 0) {
+        dom.sailorList.innerHTML = '<span class="small muted">No sailors yet.</span>';
+        return;
+      }
+
+      const term = String(dom.sailorSearch?.value || "").trim().toLowerCase();
+      if (!term) {
+        dom.sailorList.innerHTML = '<span class="small muted">Type to search sailors.</span>';
+        return;
+      }
+      const filtered = state.sailors.filter((s) => s.name.toLowerCase().includes(term));
+
+      dom.sailorList.innerHTML = filtered.length > 0
+        ? filtered.map((s) => `
+          <div class="sailor-item">
+            <span class="sailor-item-name">${escapeHtml(s.name)}</span>
+            <span>
+              <button type="button" data-edit-sailor="${s.id}" aria-label="Edit sailor">edit</button>
+              <button type="button" data-delete-sailor="${s.id}" aria-label="Delete sailor">delete</button>
+            </span>
+          </div>
+        `).join("")
+        : '<span class="small muted">No matching sailors.</span>';
+    }
+
+    function renderMergeControls() {
+      const sailors = [...state.sailors].sort((a, b) => a.name.localeCompare(b.name));
+      if (sailors.length < 2) {
+        dom.mergeFromSelect.innerHTML = '<option value="">Need at least 2 sailors</option>';
+        dom.mergeIntoSelect.innerHTML = '<option value="">Need at least 2 sailors</option>';
+        dom.mergeSailorBtn.disabled = true;
+        return;
+      }
+
+      const currentFrom = dom.mergeFromSelect.value;
+      const currentInto = dom.mergeIntoSelect.value;
+
+      const options = sailors
+        .map((sailor) => `<option value="${sailor.id}">${escapeHtml(sailor.name)}</option>`)
+        .join("");
+      dom.mergeFromSelect.innerHTML = options;
+      dom.mergeIntoSelect.innerHTML = options;
+
+      dom.mergeFromSelect.value =
+        sailors.some((sailor) => sailor.id === currentFrom) ? currentFrom : sailors[0].id;
+
+      let nextInto = sailors.some((sailor) => sailor.id === currentInto)
+        ? currentInto
+        : sailors[1].id;
+      if (nextInto === dom.mergeFromSelect.value) {
+        const fallback = sailors.find((sailor) => sailor.id !== dom.mergeFromSelect.value);
+        nextInto = fallback?.id || "";
+      }
+      dom.mergeIntoSelect.value = nextInto;
+
+      dom.mergeSailorBtn.disabled =
+        !dom.mergeFromSelect.value ||
+        !dom.mergeIntoSelect.value ||
+        dom.mergeFromSelect.value === dom.mergeIntoSelect.value;
+    }
+
+    function getSelectedRegattaParticipantIds() {
+      if (dom.regattaSelect.value === "__new__") {
+        return [...state.selectedParticipantIds];
+      }
+      const regattaId = dom.regattaSelect.value;
+      const existing = state.regattaParticipants[regattaId] || [];
+      if (state.selectedParticipantIds.length > 0) return [...state.selectedParticipantIds];
+      return existing.length > 0 ? [...existing] : state.sailors.map((sailor) => sailor.id);
+    }
+
+    function syncSelectedParticipantsForCurrentRegatta() {
+      state.selectedParticipantIds = getSelectedRegattaParticipantIds()
+        .filter((id) => state.sailors.some((sailor) => sailor.id === id));
+    }
+
+    function renderParticipantsPicker() {
+      syncSelectedParticipantsForCurrentRegatta();
+
+      const selectedSet = new Set(state.selectedParticipantIds);
+      const available = state.sailors.filter((sailor) => !selectedSet.has(sailor.id));
+      const searchTerm = String(dom.participantSearch?.value || "").trim().toLowerCase();
+      const filteredAvailable = searchTerm
+        ? available
+            .filter((sailor) => sailor.name.toLowerCase().includes(searchTerm))
+            .slice(0, 5)
+        : [];
+      const selected = state.sailors.filter((sailor) => selectedSet.has(sailor.id));
+
+      dom.participantSelect.innerHTML = filteredAvailable.length > 0
+        ? filteredAvailable
+            .map((sailor) => `<option value="${sailor.id}">${escapeHtml(sailor.name)}</option>`)
+            .join("")
+        : `<option value="">${searchTerm ? "No matching sailors" : "Type to search sailors"}</option>`;
+      dom.addParticipantBtn.disabled = filteredAvailable.length === 0;
+
+      dom.participantList.innerHTML = selected.length > 0
+        ? selected.map((sailor) => `
+          <div class="participant-item">
+            <span>${escapeHtml(sailor.name)}</span>
+            <button type="button" data-remove-participant="${sailor.id}" aria-label="Remove participant">Remove</button>
+          </div>
+        `).join("")
+        : '<span class="small muted">No participants selected.</span>';
+    }
+
+    function renderRaceRows() {
+      const participantIds = getSelectedRegattaParticipantIds();
+      const participants = state.sailors.filter((sailor) => participantIds.includes(sailor.id));
+      if (participants.length === 0) {
+        dom.resultsGrid.innerHTML = '<span class="small muted">Select regatta participants first.</span>';
+        return;
+      }
+
+      const selectedRegattaId = dom.regattaSelect?.value;
+      dom.resultsGrid.innerHTML = participants.map((s) => `
+        <div class="result-row" data-sailor-row="${s.id}">
+          <strong>${escapeHtml(s.name)}</strong>
+          <select name="status_${s.id}">
+            ${statuses.map((st) => `<option value="${st}">${st}</option>`).join("")}
+          </select>
+          <input type="number" min="1" step="1" name="position_${s.id}" placeholder="Position" />
+          <input name="sailNumber_${s.id}" placeholder="Sail #" value="${escapeHtml(selectedRegattaId && selectedRegattaId !== "__new__" ? (state.sailorRegattaNumbers[selectedRegattaId]?.[s.id] || "") : "")}" />
+        </div>
+      `).join("");
+      applyRaceResultSearchFilter();
+    }
+
+    function applyRaceResultSearchFilter() {
+      const term = String(dom.raceResultSearch?.value || "").trim().toLowerCase();
+      const rows = dom.resultsGrid.querySelectorAll(".result-row");
+      rows.forEach((row) => {
+        const sailorName = (row.querySelector("strong")?.textContent || "").toLowerCase();
+        row.hidden = term ? !sailorName.includes(term) : false;
+      });
+    }
+
+    function syncStatusWithEnteredScore(target) {
+      const input = target?.closest("input[name^='position_']");
+      if (!input) return;
+      const row = input.closest(".result-row");
+      if (!row) return;
+      const statusSelect = row.querySelector("select[name^='status_']");
+      if (!statusSelect) return;
+      const hasScore = String(input.value || "").trim() !== "";
+      if (hasScore && statusSelect.value === "DNC") {
+        statusSelect.value = "OK";
+      }
+    }
+
+    function setDefaultRaceResults() {
+      const participantIds = getSelectedRegattaParticipantIds();
+      const participants = state.sailors.filter((sailor) => participantIds.includes(sailor.id));
+      for (let i = 0; i < participants.length; i += 1) {
+        const sailor = participants[i];
+        const statusInput = dom.raceForm.querySelector(`[name="status_${sailor.id}"]`);
+        const positionInput = dom.raceForm.querySelector(`[name="position_${sailor.id}"]`);
+        const sailNumberInput = dom.raceForm.querySelector(`[name="sailNumber_${sailor.id}"]`);
+        if (!statusInput || !positionInput) continue;
+        statusInput.value = "OK";
+        positionInput.value = "";
+        if (sailNumberInput) {
+          const selectedRegattaId = dom.regattaSelect?.value;
+          sailNumberInput.value =
+            selectedRegattaId && selectedRegattaId !== "__new__"
+              ? state.sailorRegattaNumbers[selectedRegattaId]?.[sailor.id] || ""
+              : "";
+        }
+      }
+    }
+
+    function renderRegattaSelect() {
+      if (state.regattas.length === 0) {
+        dom.regattaSelect.innerHTML = '<option value="__new__">Create new regatta</option>';
+        dom.regattaSelect.value = "__new__";
+        dom.newRegattaWrap.hidden = false;
+        state.selectedParticipantIds = [];
+        renderParticipantsPicker();
+        return;
+      }
+
+      const options = state.regattas.map(
+        (regatta) => `<option value="${regatta.id}">${escapeHtml(regatta.name)}</option>`
+      );
+      options.push('<option value="__new__">Create new regatta...</option>');
+      dom.regattaSelect.innerHTML = options.join("");
+      if (!dom.regattaSelect.value) dom.regattaSelect.value = state.regattas[0].id;
+      dom.newRegattaWrap.hidden = dom.regattaSelect.value !== "__new__";
+      renderParticipantsPicker();
+    }
+
+    function renderRaceSelect() {
+      const options = ['<option value="">Create new race</option>'];
+      const selectedRegattaId = dom.regattaSelect.value;
+      const filteredRaces = selectedRegattaId && selectedRegattaId !== "__new__"
+        ? state.races.filter((race) => race.regattaId === selectedRegattaId)
+        : [];
+
+      for (const race of filteredRaces) {
+        options.push(
+          `<option value="${race.id}">${escapeHtml(race.regattaName || "Regatta")} - ${escapeHtml(race.name)} (${escapeHtml(race.date || "")})</option>`
+        );
+      }
+      dom.raceSelect.innerHTML = options.join("");
+      if (editingRaceId && filteredRaces.some((race) => race.id === editingRaceId)) {
+        dom.raceSelect.value = editingRaceId;
+      } else {
+        dom.raceSelect.value = "";
+      }
+    }
+
+    function applyRaceToForm(race) {
+      if (!race) return;
+      editingRaceId = race.id;
+      dom.raceSelect.value = race.id;
+      dom.raceForm.elements.date.value = race.date || "";
+
+      const regatta = state.regattas.find((r) => r.id === race.regattaId);
+      if (regatta) {
+        dom.regattaSelect.value = regatta.id;
+        dom.raceForm.elements.newRegattaName.value = "";
+      } else {
+        dom.regattaSelect.value = "__new__";
+        dom.raceForm.elements.newRegattaName.value = race.regattaName || "";
+      }
+      dom.newRegattaWrap.hidden = dom.regattaSelect.value !== "__new__";
+      const regattaParticipants = state.regattaParticipants[race.regattaId] || [];
+      if (regattaParticipants.length > 0) {
+        state.selectedParticipantIds = [...regattaParticipants];
+      } else {
+        state.selectedParticipantIds = (race.results || []).map((result) => result.sailorId);
+      }
+      renderParticipantsPicker();
+
+      setDefaultRaceResults();
+      const participantIds = getSelectedRegattaParticipantIds();
+      for (const sailor of state.sailors.filter((s) => participantIds.includes(s.id))) {
+        const raceResult = (race.results || []).find((result) => result.sailorId === sailor.id);
+        const statusInput = dom.raceForm.querySelector(`[name="status_${sailor.id}"]`);
+        const positionInput = dom.raceForm.querySelector(`[name="position_${sailor.id}"]`);
+        const sailNumberInput = dom.raceForm.querySelector(`[name="sailNumber_${sailor.id}"]`);
+        if (!statusInput || !positionInput) continue;
+        statusInput.value = raceResult?.status || "OK";
+        positionInput.value = raceResult?.position ?? "";
+        if (sailNumberInput) {
+          const regattaId = race.regattaId;
+          sailNumberInput.value = state.sailorRegattaNumbers[regattaId]?.[sailor.id] || "";
+        }
+      }
+
+      dom.saveRaceBtn.textContent = "Update Race";
+      dom.cancelEditBtn.hidden = false;
+      dom.autoSaveStatus.textContent = "";
+    }
+
+    function resetRaceFormMode() {
+      editingRaceId = null;
+      if (autoSaveTimer) {
+        clearTimeout(autoSaveTimer);
+        autoSaveTimer = null;
+      }
+      dom.raceSelect.value = "";
+      dom.saveRaceBtn.textContent = "Save Race";
+      dom.cancelEditBtn.hidden = true;
+      dom.autoSaveStatus.textContent = "";
+      dom.raceForm.elements.date.value = "";
+      dom.raceForm.elements.newRegattaName.value = "";
+      state.selectedParticipantIds = [];
+      renderParticipantsPicker();
+      renderRaceRows();
+      setDefaultRaceResults();
+    }
+
+    function renderRaceList() {
+      if (state.races.length === 0) {
+        dom.raceList.innerHTML = '<span class="small muted">No races yet.</span>';
+        return;
+      }
+
+      dom.raceList.innerHTML = state.races.map((race) => `
+        <span class="chip">
+          <span>${escapeHtml(race.regattaName || "Regatta")} - ${escapeHtml(race.name)} ${race.date ? `(${escapeHtml(race.date)})` : ""}</span>
+          <button type="button" data-delete-race="${race.id}" aria-label="Delete race">x</button>
+        </span>
+      `).join("");
+    }
+
+    function renderLeaderboardTable(target, sailors, races, leaderboard, summary, title, regattaId = null) {
+      if (sailors.length === 0) {
+        target.innerHTML = '<p class="small muted">No data yet.</p>';
+        summary.textContent = "";
+        return;
+      }
+
+      const raceHeaders = races.map((r) => `<th>${escapeHtml(r.name)}</th>`).join("");
+      const rows = leaderboard.map((row, index) => {
+        const displaySailNumber =
+          regattaId && state.sailorRegattaNumbers[regattaId]?.[row.sailor.id]
+            ? state.sailorRegattaNumbers[regattaId][row.sailor.id]
+            : row.sailor.sailNumber || "No sail #";
+        const raceCells = row.racePoints.map((rp) => {
+          const label = rp.status === "OK" ? `${rp.position}` : rp.status;
+          const shownPoints = rp.discarded ? `(${rp.points})` : `${rp.points}`;
+          const penaltyLine =
+            rp.status !== "OK" ? `<span class="penalty">${escapeHtml(rp.status)}</span>` : "";
+          return `<td title="${escapeHtml(label)}"><span class="score-value">${shownPoints}</span>${penaltyLine}</td>`;
+        }).join("");
+
+        return `
+          <tr>
+            <td>${row.rank ?? (index + 1)}</td>
+            <td class="sailor-cell">
+              <strong class="sailor-name">${escapeHtml(row.sailor.name)}</strong>
+              <span class="small muted sailor-number">${escapeHtml(displaySailNumber)}</span>
+            </td>
+            ${raceCells}
+            <td>${row.netTotal}</td>
+            <td><strong>${row.net}</strong></td>
+            <td class="trend-${row.trend}" title="Previous rank: ${row.previousRank}">${row.trendSymbol} (${row.trendDeltaAbs ?? 0})</td>
+          </tr>
+        `;
+      }).join("");
+
+      target.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Rank</th>
+              <th>Sailor</th>
+              ${raceHeaders}
+              <th>Net Total</th>
+              <th>Net</th>
+              <th>Trend</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+
+      summary.textContent = title;
+    }
+
+    function renderLeaderboards() {
+      const regattaInfo = state.currentRegattaInfo;
+      const regattaRange = regattaInfo
+        ? `${regattaInfo.startDate} to ${regattaInfo.endDate}`
+        : "No regatta selected";
+      const regattaName = regattaInfo ? regattaInfo.name : "Current Regatta";
+      const regattaTitle = `${regattaName} (${regattaRange}) - ${state.currentRegatta.leaderboard.length} sailors, ${state.currentRegatta.races.length} races. Discards: ${state.currentRegatta.discardCount} (1 per 6 races).`;
+      renderLeaderboardTable(
+        dom.currentRegattaWrap,
+        state.sailors,
+        state.currentRegatta.races,
+        state.currentRegatta.leaderboard,
+        dom.currentRegattaSummary,
+        regattaTitle,
+        regattaInfo?.id || null
+      );
+
+      const rankingTitle = `${state.rankingList.leaderboard.length} sailors, showing last ${state.rankingList.races.length} races (max 18). Discards: ${state.rankingList.discardCount} (1 per 6 races).`;
+      renderLeaderboardTable(
+        dom.rankingWrap,
+        state.sailors,
+        state.rankingList.races,
+        state.rankingList.leaderboard,
+        dom.rankingSummary,
+        rankingTitle
+      );
+    }
+
+    function setActiveTab(tabName) {
+      activeTab = tabName;
+      const showCurrent = activeTab === "current";
+
+      dom.currentTabPanel.hidden = !showCurrent;
+      dom.rankingTabPanel.hidden = showCurrent;
+      dom.currentTabBtn.classList.toggle("active", showCurrent);
+      dom.rankingTabBtn.classList.toggle("active", !showCurrent);
+    }
+
+    function setRaceFormTab(tabName) {
+      activeRaceFormTab = tabName;
+      const showParticipants = activeRaceFormTab === "participants";
+
+      dom.participantsTabPanel.hidden = !showParticipants;
+      dom.raceResultsTabPanel.hidden = showParticipants;
+      dom.participantsTabBtn.classList.toggle("active", showParticipants);
+      dom.raceResultsTabBtn.classList.toggle("active", !showParticipants);
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    async function refresh() {
+      const data = await api("/api/state");
+      state.sailors = data.sailors;
+      state.regattas = data.regattas;
+      state.races = data.races;
+      state.sailorRegattaNumbers = data.sailorRegattaNumbers || {};
+      state.regattaParticipants = data.regattaParticipants || {};
+      state.currentRegattaInfo = data.currentRegattaInfo;
+      state.currentRegatta = data.currentRegatta;
+      state.rankingList = data.rankingList;
+      state.updatedAt = data.updatedAt;
+
+      renderSailors();
+      renderMergeControls();
+      renderRegattaSelect();
+      renderRaceRows();
+      renderRaceList();
+      renderRaceSelect();
+      if (editingRaceId) {
+        const race = state.races.find((item) => item.id === editingRaceId);
+        if (race) applyRaceToForm(race);
+        else resetRaceFormMode();
+      } else {
+        setDefaultRaceResults();
+      }
+      renderLeaderboards();
+      dom.lastUpdated.textContent = `Last updated: ${safeDate(state.updatedAt)}`;
+    }
+
+    async function persistSelectedParticipantsIfExistingRegatta() {
+      const regattaId = dom.regattaSelect.value;
+      if (!regattaId || regattaId === "__new__") return;
+
+      const response = await api(`/api/regattas/${regattaId}/participants`, {
+        method: "PUT",
+        body: JSON.stringify({ participantIds: state.selectedParticipantIds })
+      });
+      state.regattaParticipants[regattaId] = response.participantIds || [...state.selectedParticipantIds];
+      state.updatedAt = response.updatedAt || state.updatedAt;
+      dom.lastUpdated.textContent = `Last updated: ${safeDate(state.updatedAt)}`;
+    }
+
+    function buildRacePayload() {
+      if (state.sailors.length === 0) return { error: "Add sailors before adding races." };
+
+      const form = new FormData(dom.raceForm);
+      const selectedRegatta = form.get("regattaSelect");
+      const selectedRegattaObj = state.regattas.find((regatta) => regatta.id === selectedRegatta);
+      const regattaName =
+        selectedRegatta === "__new__"
+          ? String(form.get("newRegattaName") || "").trim()
+          : selectedRegattaObj?.name || "";
+      if (!regattaName) {
+        return { error: "Please select a regatta or enter a new regatta name." };
+      }
+
+      const participantIds = getSelectedRegattaParticipantIds();
+      if (participantIds.length === 0) {
+        return { error: "Please select at least one participant for this regatta." };
+      }
+
+      const participants = state.sailors.filter((sailor) => participantIds.includes(sailor.id));
+      const results = participants.map((sailor) => {
+        const status = form.get(`status_${sailor.id}`) || "OK";
+        const positionRaw = String(form.get(`position_${sailor.id}`) || "").trim();
+        const item = { sailorId: sailor.id, status };
+        if (positionRaw) {
+          item.position = Number(positionRaw);
+        }
+        return item;
+      }).filter((item) => !(item.status === "OK" && !Number.isFinite(Number(item.position))));
+
+      const sailNumbers = participants.map((sailor) => ({
+        sailorId: sailor.id,
+        sailNumber: form.get(`sailNumber_${sailor.id}`) || ""
+      }));
+
+      return {
+        payload: {
+          regattaName,
+          date: form.get("date"),
+          participantIds,
+          results,
+          sailNumbers
+        },
+      };
+    }
+
+    async function autoSaveRaceEdits() {
+      if (!editingRaceId || autoSaveInFlight) return;
+      const built = buildRacePayload();
+      if (built.error) return;
+
+      autoSaveInFlight = true;
+      dom.autoSaveStatus.textContent = "Saving...";
+      try {
+        const response = await api(`/api/races/${editingRaceId}`, {
+          method: "PUT",
+          body: JSON.stringify(built.payload)
+        });
+        state.updatedAt = response.updatedAt || state.updatedAt;
+        dom.lastUpdated.textContent = `Last updated: ${safeDate(state.updatedAt)}`;
+        dom.autoSaveStatus.textContent = "Saved";
+      } catch (error) {
+        dom.autoSaveStatus.textContent = "Auto-save failed";
+      } finally {
+        autoSaveInFlight = false;
+      }
+    }
+
+    function scheduleAutoSaveRaceEdits() {
+      if (!editingRaceId) return;
+      if (autoSaveTimer) clearTimeout(autoSaveTimer);
+      autoSaveTimer = setTimeout(() => {
+        autoSaveTimer = null;
+        autoSaveRaceEdits();
+      }, 500);
+    }
+
+    dom.sailorForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const form = new FormData(event.target);
+      try {
+        await api("/api/sailors", {
+          method: "POST",
+          body: JSON.stringify({
+            name: form.get("name"),
+            club: form.get("club")
+          })
+        });
+        event.target.reset();
+        await refresh();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    dom.raceForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const built = buildRacePayload();
+      if (built.error) {
+        alert(built.error);
+        return;
+      }
+
+      try {
+        const method = editingRaceId ? "PUT" : "POST";
+        const path = editingRaceId ? `/api/races/${editingRaceId}` : "/api/races";
+        await api(path, {
+          method,
+          body: JSON.stringify(built.payload)
+        });
+
+        resetRaceFormMode();
+        await refresh();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    dom.regattaSelect.addEventListener("change", () => {
+      dom.newRegattaWrap.hidden = dom.regattaSelect.value !== "__new__";
+      if (dom.regattaSelect.value !== "__new__") {
+        dom.raceForm.elements.newRegattaName.value = "";
+      }
+      editingRaceId = null;
+      dom.cancelEditBtn.hidden = true;
+      dom.saveRaceBtn.textContent = "Save Race";
+      state.selectedParticipantIds = [];
+      renderParticipantsPicker();
+      renderRaceSelect();
+      renderRaceRows();
+      setDefaultRaceResults();
+    });
+
+    dom.addParticipantBtn.addEventListener("click", async () => {
+      const sailorId = dom.participantSelect.value;
+      if (!sailorId) return;
+      if (!state.selectedParticipantIds.includes(sailorId)) {
+        state.selectedParticipantIds.push(sailorId);
+      }
+      dom.participantSearch.value = "";
+      renderParticipantsPicker();
+      renderRaceRows();
+      setDefaultRaceResults();
+      try {
+        await persistSelectedParticipantsIfExistingRegatta();
+      } catch (error) {
+        alert(error.message);
+        await refresh();
+      }
+    });
+
+    dom.participantSearch.addEventListener("input", () => {
+      renderParticipantsPicker();
+    });
+
+    dom.raceResultSearch.addEventListener("input", () => {
+      applyRaceResultSearchFilter();
+    });
+
+    dom.resultsGrid.addEventListener("input", (event) => {
+      if (!event.target.closest("input, select")) return;
+      syncStatusWithEnteredScore(event.target);
+      scheduleAutoSaveRaceEdits();
+    });
+
+    dom.resultsGrid.addEventListener("change", (event) => {
+      if (!event.target.closest("input, select")) return;
+      syncStatusWithEnteredScore(event.target);
+      scheduleAutoSaveRaceEdits();
+    });
+
+    dom.participantList.addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-remove-participant]");
+      if (!button) return;
+      state.selectedParticipantIds = state.selectedParticipantIds.filter(
+        (id) => id !== button.dataset.removeParticipant
+      );
+      renderParticipantsPicker();
+      renderRaceRows();
+      setDefaultRaceResults();
+      try {
+        await persistSelectedParticipantsIfExistingRegatta();
+      } catch (error) {
+        alert(error.message);
+        await refresh();
+      }
+    });
+
+    dom.raceSelect.addEventListener("change", () => {
+      const raceId = dom.raceSelect.value;
+      if (!raceId) {
+        resetRaceFormMode();
+        return;
+      }
+      const race = state.races.find((item) => item.id === raceId);
+      if (race) applyRaceToForm(race);
+    });
+
+    dom.cancelEditBtn.addEventListener("click", () => {
+      resetRaceFormMode();
+    });
+
+    dom.sailorList.addEventListener("click", async (event) => {
+      const editButton = event.target.closest("button[data-edit-sailor]");
+      if (editButton) {
+        const sailor = state.sailors.find((item) => item.id === editButton.dataset.editSailor);
+        if (!sailor) return;
+        const nextName = prompt("Update sailor name:", sailor.name);
+        if (nextName === null) return;
+        const trimmed = nextName.trim();
+        if (!trimmed) {
+          alert("Sailor name is required.");
+          return;
+        }
+
+        try {
+          await api(`/api/sailors/${sailor.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ name: trimmed })
+          });
+          await refresh();
+        } catch (error) {
+          alert(error.message);
+        }
+        return;
+      }
+
+      const deleteButton = event.target.closest("button[data-delete-sailor]");
+      if (!deleteButton) return;
+      if (!confirm("Delete this sailor? This is allowed only if the sailor has no saved scores.")) {
+        return;
+      }
+
+      try {
+        await api(`/api/sailors/${deleteButton.dataset.deleteSailor}`, { method: "DELETE" });
+        await refresh();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    dom.sailorSearch.addEventListener("input", () => {
+      renderSailors();
+    });
+
+    dom.mergeFromSelect.addEventListener("change", () => {
+      renderMergeControls();
+    });
+
+    dom.mergeIntoSelect.addEventListener("change", () => {
+      renderMergeControls();
+    });
+
+    dom.mergeSailorBtn.addEventListener("click", async () => {
+      const sourceSailorId = dom.mergeFromSelect.value;
+      const targetSailorId = dom.mergeIntoSelect.value;
+      if (!sourceSailorId || !targetSailorId || sourceSailorId === targetSailorId) {
+        alert("Please choose two different sailors.");
+        return;
+      }
+
+      const source = state.sailors.find((sailor) => sailor.id === sourceSailorId);
+      const target = state.sailors.find((sailor) => sailor.id === targetSailorId);
+      if (!source || !target) {
+        alert("Invalid sailor selection.");
+        return;
+      }
+
+      if (!confirm(`Merge "${source.name}" into "${target.name}"? This cannot be undone.`)) {
+        return;
+      }
+
+      try {
+        await api("/api/sailors/merge", {
+          method: "POST",
+          body: JSON.stringify({ sourceSailorId, targetSailorId })
+        });
+        await refresh();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    dom.refreshBtn.addEventListener("click", async () => {
+      try {
+        await refresh();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    dom.currentTabBtn.addEventListener("click", () => setActiveTab("current"));
+    dom.rankingTabBtn.addEventListener("click", () => setActiveTab("ranking"));
+    dom.participantsTabBtn.addEventListener("click", () => setRaceFormTab("participants"));
+    dom.raceResultsTabBtn.addEventListener("click", () => setRaceFormTab("results"));
+
+    dom.raceList.addEventListener("click", async (event) => {
+      const button = event.target.closest("button[data-delete-race]");
+      if (!button) return;
+      if (!confirm("Delete this race?")) return;
+
+      try {
+        await api(`/api/races/${button.dataset.deleteRace}`, { method: "DELETE" });
+        await refresh();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    dom.resetBtn.addEventListener("click", async () => {
+      if (!confirm("Reset all sailors and race results?")) return;
+      try {
+        await api("/api/reset", { method: "POST" });
+        await refresh();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+
+    setActiveTab("current");
+    setRaceFormTab("results");
+    refresh().catch((error) => {
+      dom.currentRegattaSummary.textContent = `Failed to load data: ${error.message}`;
+      dom.rankingSummary.textContent = `Failed to load data: ${error.message}`;
+    });
+  </script>
+</body>
+</html>
