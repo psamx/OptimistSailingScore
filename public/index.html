@@ -340,6 +340,9 @@
           <label>Name
             <input name="name" required placeholder="Sailor name" />
           </label>
+          <label>Year of Birth
+            <input name="yearOfBirth" type="number" min="1900" max="2100" step="1" placeholder="e.g. 2013" />
+          </label>
           <label>Club
             <input name="club" placeholder="Club" />
           </label>
@@ -524,6 +527,13 @@
       return Number.isNaN(date.getTime()) ? "unknown" : date.toLocaleString();
     }
 
+    function formatYearOfBirth(value) {
+      if (value === null || value === undefined || value === "") return "";
+      const year = Number(value);
+      if (!Number.isInteger(year) || year <= 0) return "";
+      return String(year);
+    }
+
     function renderSailors() {
       if (state.sailors.length === 0) {
         dom.sailorList.innerHTML = '<span class="small muted">No sailors yet.</span>';
@@ -540,7 +550,7 @@
       dom.sailorList.innerHTML = filtered.length > 0
         ? filtered.map((s) => `
           <div class="sailor-item">
-            <span class="sailor-item-name">${escapeHtml(s.name)}</span>
+            <span class="sailor-item-name">${escapeHtml(s.name)}${formatYearOfBirth(s.yearOfBirth) ? ` (${escapeHtml(formatYearOfBirth(s.yearOfBirth))})` : ""}</span>
             <span>
               <button type="button" data-edit-sailor="${s.id}" aria-label="Edit sailor">edit</button>
               <button type="button" data-delete-sailor="${s.id}" aria-label="Delete sailor">delete</button>
@@ -642,7 +652,7 @@
       const selectedRegattaId = dom.regattaSelect?.value;
       dom.resultsGrid.innerHTML = participants.map((s) => `
         <div class="result-row" data-sailor-row="${s.id}">
-          <strong>${escapeHtml(s.name)}</strong>
+          <strong>${escapeHtml(s.name)}${formatYearOfBirth(s.yearOfBirth) ? ` (${escapeHtml(formatYearOfBirth(s.yearOfBirth))})` : ""}</strong>
           <select name="status_${s.id}">
             ${statuses.map((st) => `<option value="${st}">${st}</option>`).join("")}
           </select>
@@ -837,7 +847,7 @@
           <tr>
             <td>${row.rank ?? (index + 1)}</td>
             <td class="sailor-cell">
-              <strong class="sailor-name">${escapeHtml(row.sailor.name)}</strong>
+              <strong class="sailor-name">${escapeHtml(row.sailor.name)}${formatYearOfBirth(row.sailor.yearOfBirth) ? ` (${escapeHtml(formatYearOfBirth(row.sailor.yearOfBirth))})` : ""}</strong>
               <span class="small muted sailor-number">${escapeHtml(displaySailNumber)}</span>
             </td>
             ${raceCells}
@@ -1051,6 +1061,7 @@
           method: "POST",
           body: JSON.stringify({
             name: form.get("name"),
+            yearOfBirth: form.get("yearOfBirth"),
             club: form.get("club")
           })
         });
@@ -1175,6 +1186,12 @@
         if (!sailor) return;
         const nextName = prompt("Update sailor name:", sailor.name);
         if (nextName === null) return;
+        const currentYear = formatYearOfBirth(sailor.yearOfBirth);
+        const nextYear = prompt(
+          "Update year of birth (YYYY, leave empty to clear):",
+          currentYear
+        );
+        if (nextYear === null) return;
         const trimmed = nextName.trim();
         if (!trimmed) {
           alert("Sailor name is required.");
@@ -1184,7 +1201,7 @@
         try {
           await api(`/api/sailors/${sailor.id}`, {
             method: "PUT",
-            body: JSON.stringify({ name: trimmed })
+            body: JSON.stringify({ name: trimmed, yearOfBirth: nextYear.trim() })
           });
           await refresh();
         } catch (error) {

@@ -13,6 +13,24 @@ function createId(prefix) {
   return `${prefix}_${crypto.randomUUID().slice(0, 8)}`;
 }
 
+function normalizeYearOfBirth(value) {
+  if (value === null || value === undefined) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  if (!/^\d{4}$/.test(raw)) {
+    throw new Error("Year of birth must be a 4-digit year.");
+  }
+
+  const year = Number(raw);
+  const currentYear = new Date().getUTCFullYear();
+  if (!Number.isInteger(year) || year < 1900 || year > currentYear) {
+    throw new Error(`Year of birth must be between 1900 and ${currentYear}.`);
+  }
+
+  return year;
+}
+
 function parseCookies(request) {
   const header = request.headers.get("cookie") || "";
   if (!header) return {};
@@ -127,6 +145,14 @@ async function verifySessionToken(env, token) {
 }
 
 async function ensureRuntimeSchema(env) {
+  const sailorColumns = await env.DB.prepare("PRAGMA table_info(sailors)").all();
+  const hasYearOfBirth = (sailorColumns.results || []).some(
+    (column) => column?.name === "year_of_birth"
+  );
+  if (!hasYearOfBirth) {
+    await env.DB.prepare("ALTER TABLE sailors ADD COLUMN year_of_birth INTEGER").run();
+  }
+
   await env.DB.batch([
     env.DB.prepare(
       "CREATE TABLE IF NOT EXISTS regatta_participants (regatta_id TEXT NOT NULL, sailor_id TEXT NOT NULL, PRIMARY KEY (regatta_id, sailor_id))"
@@ -260,7 +286,7 @@ async function loadState(env) {
   const [sailorsRows, regattasRows, racesRows, resultsRows, sailNumbersRows, participantsRows, updatedAtRow] =
     await Promise.all([
     env.DB.prepare(
-      "SELECT id, name, sail_number AS sailNumber, club FROM sailors ORDER BY name ASC"
+      "SELECT id, name, year_of_birth AS yearOfBirth, sail_number AS sailNumber, club FROM sailors ORDER BY name ASC"
     ).all(),
     env.DB.prepare(
       "SELECT id, name, start_date AS startDate, end_date AS endDate FROM regattas ORDER BY start_date DESC, name ASC"
@@ -371,6 +397,26 @@ function pointsForResult(result, sailorCount) {
   if (["DSQ", "BFD", "UFD", "DNE"].includes(status)) return sailorCount + 2;
 
   return sailorCount;
+}
+
+function yearFromDateString(value, fallbackYear) {
+  const raw = String(value || "");
+  const match = raw.match(/^(\d{4})/);
+  if (!match) return fallbackYear;
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) ? parsed : fallbackYear;
+}
+
+function effectiveYearOfBirth(sailor, referenceYear) {
+  const raw = sailor?.yearOfBirth;
+  const parsed = Number(raw);
+  if (Number.isInteger(parsed) && parsed > 0) return parsed;
+  return referenceYear;
+}
+
+function isUnder16ForYear(sailor, referenceYear) {
+  const yob = effectiveYearOfBirth(sailor, referenceYear);
+  return referenceYear - yob < 16;
 }
 
 function calculateLeaderboardForRaces(
@@ -545,6 +591,7 @@ function calculateLeaderboards(state) {
   const sailors = [...state.sailors];
   const regattas = [...state.regattas];
   const allRaces = [...state.races];
+  const currentYear = new Date().getUTCFullYear();
   const regattaParticipants = state.regattaParticipants || {};
   const sailorsById = new Map(sailors.map((sailor) => [sailor.id, sailor]));
   const calculateDiscardCount = (raceCount) => Math.floor(raceCount / 6);
@@ -557,10 +604,14 @@ function calculateLeaderboards(state) {
   const currentRegattaRaces = currentRegattaInfo
     ? allRaces.filter((race) => race.regattaId === currentRegattaInfo.id)
     : [];
+  const currentRegattaYear = currentRegattaInfo
+    ? yearFromDateString(currentRegattaInfo.startDate, currentYear)
+    : currentYear;
   const currentRegattaSailors = currentRegattaInfo
     ? (regattaParticipants[currentRegattaInfo.id] || [])
         .map((id) => sailorsById.get(id))
         .filter(Boolean)
+        .filter((sailor) => isUnder16ForYear(sailor, currentRegattaYear))
     : [];
   const currentRegattaDiscardCount = calculateDiscardCount(currentRegattaRaces.length);
 
@@ -568,7 +619,11 @@ function calculateLeaderboards(state) {
     ...race,
     name: `R${index + 1}`
   }));
+  const rankingReferenceYear = rankingRaces.length
+    ? yearFromDateString(rankingRaces[rankingRaces.length - 1].date, currentYear)
+    : currentYear;
   const rankingEligibleSailors = sailors.filter((sailor) =>
+    isUnder16ForYear(sailor, rankingReferenceYear) &&
     rankingRaces.some((race) => {
       const result = race.results.find((r) => r.sailorId === sailor.id);
       return (result?.status || "DNC").toUpperCase() !== "DNC";
@@ -764,16 +819,24 @@ export default {
       const name = typeof body?.name === "string" ? body.name.trim() : "";
       if (!name) return badRequest("Sailor name is required.");
 
+      let yearOfBirth = null;
+      try {
+        yearOfBirth = normalizeYearOfBirth(body?.yearOfBirth);
+      } catch (error) {
+        return badRequest(error.message);
+      }
+
       const sailor = {
         id: createId("sailor"),
         name,
+        yearOfBirth,
         sailNumber: "",
         club: (body.club || "").trim()
       };
 
       await env.DB
-        .prepare("INSERT INTO sailors (id, name, sail_number, club) VALUES (?, ?, ?, ?)")
-        .bind(sailor.id, sailor.name, sailor.sailNumber, sailor.club)
+        .prepare("INSERT INTO sailors (id, name, year_of_birth, sail_number, club) VALUES (?, ?, ?, ?, ?)")
+        .bind(sailor.id, sailor.name, sailor.yearOfBirth, sailor.sailNumber, sailor.club)
         .run();
 
       const updatedAt = await touchUpdatedAt(env);
@@ -862,7 +925,7 @@ export default {
     if (request.method === "PUT" && url.pathname.startsWith("/api/sailors/")) {
       const id = url.pathname.split("/").pop();
       const existing = await env.DB
-        .prepare("SELECT id, name, club FROM sailors WHERE id = ?")
+        .prepare("SELECT id, name, year_of_birth AS yearOfBirth, club FROM sailors WHERE id = ?")
         .bind(id)
         .first();
 
@@ -871,10 +934,20 @@ export default {
       const body = await parseJson(request);
       const name = typeof body?.name === "string" ? body.name.trim() : "";
       if (!name) return badRequest("Sailor name is required.");
+      const hasYearOfBirth = Object.prototype.hasOwnProperty.call(body || {}, "yearOfBirth");
+
+      let yearOfBirth = existing.yearOfBirth ?? null;
+      if (hasYearOfBirth) {
+        try {
+          yearOfBirth = normalizeYearOfBirth(body?.yearOfBirth);
+        } catch (error) {
+          return badRequest(error.message);
+        }
+      }
 
       await env.DB
-        .prepare("UPDATE sailors SET name = ? WHERE id = ?")
-        .bind(name, id)
+        .prepare("UPDATE sailors SET name = ?, year_of_birth = ? WHERE id = ?")
+        .bind(name, yearOfBirth, id)
         .run();
 
       const updatedAt = await touchUpdatedAt(env);
@@ -883,6 +956,7 @@ export default {
           sailor: {
             id,
             name,
+            yearOfBirth,
             sailNumber: "",
             club: existing.club || ""
           },

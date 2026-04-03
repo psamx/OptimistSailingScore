@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS sailors (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
+  year_of_birth INTEGER,
   sail_number TEXT DEFAULT '',
   club TEXT DEFAULT ''
 );

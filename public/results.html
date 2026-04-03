@@ -195,6 +195,13 @@
       return Number.isNaN(date.getTime()) ? "unknown" : date.toLocaleString();
     }
 
+    function formatYearOfBirth(value) {
+      if (value === null || value === undefined || value === "") return "";
+      const year = Number(value);
+      if (!Number.isInteger(year) || year <= 0) return "";
+      return String(year);
+    }
+
     function escapeHtml(text) {
       return String(text)
         .replaceAll("&", "&amp;")
@@ -230,7 +237,7 @@
           <tr>
             <td>${row.rank ?? (index + 1)}</td>
             <td class="sailor-cell">
-              <strong class="sailor-name">${escapeHtml(row.sailor.name)}</strong>
+              <strong class="sailor-name">${escapeHtml(row.sailor.name)}${formatYearOfBirth(row.sailor.yearOfBirth) ? ` (${escapeHtml(formatYearOfBirth(row.sailor.yearOfBirth))})` : ""}</strong>
               <span class="small muted sailor-number">${escapeHtml(displaySailNumber)}</span>
             </td>
             ${raceCells}
