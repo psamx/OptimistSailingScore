@@ -4,10 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "db:migrate": "wrangler d1 migrations apply optimist-scores",
-    "db:migrate:local": "wrangler d1 migrations apply optimist-scores --local"
+    "dev": "wrangler dev --config wrangler.local.toml",
+    "deploy": "wrangler deploy --config wrangler.remote.toml",
+    "db:migrate": "wrangler d1 migrations apply optimist-scores  --config wrangler.remote.toml",
+    "db:migrate:local": "wrangler d1 migrations apply optimist-scores --local  --config wrangler.local.toml"
   },
   "devDependencies": {
     "wrangler": "^4.10.0"
