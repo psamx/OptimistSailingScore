@@ -275,7 +275,7 @@
       const regattaName = regattaInfo ? regattaInfo.name : "Current Regatta";
       const currentDiscardsMode =
         regattaInfo && regattaInfo.discardsEnabled === false ? "off" : "on";
-      const regattaTitle = `${regattaName} (${regattaRange}) - ${state.currentRegatta.leaderboard.length} sailors, ${state.currentRegatta.races.length} races. Discards: ${state.currentRegatta.discardCount} (${currentDiscardsMode}).`;
+      const regattaTitle = `${regattaName} (${regattaRange}) - ${state.currentRegatta.leaderboard.length} sailors, ${state.currentRegatta.races.length} races. Discards: ${state.currentRegatta.discardCount} (${currentDiscardsMode}, rule: floor((n+2)/6)).`;
 
       renderLeaderboardTable(
         dom.currentRegattaWrap,
@@ -286,7 +286,7 @@
         regattaInfo?.id || null
       );
 
-      const rankingTitle = `${state.rankingList.leaderboard.length} sailors, showing last ${state.rankingList.races.length} races (max 18). Discards: ${state.rankingList.discardCount} (1 per 6 races).`;
+      const rankingTitle = `${state.rankingList.leaderboard.length} sailors, showing last ${state.rankingList.races.length} races (max 18). Discards: ${state.rankingList.discardCount} (rule: floor((n+2)/6)).`;
       renderLeaderboardTable(
         dom.rankingWrap,
         state.rankingList.races,

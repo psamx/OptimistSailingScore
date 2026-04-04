@@ -652,7 +652,7 @@ function calculateLeaderboards(state) {
   const regattaParticipants = state.regattaParticipants || {};
   const sailorsById = new Map(sailors.map((sailor) => [sailor.id, sailor]));
   const regattasById = new Map(regattas.map((regatta) => [regatta.id, regatta]));
-  const calculateDiscardCount = (raceCount) => Math.floor(raceCount / 6);
+  const calculateDiscardCount = (raceCount) => Math.floor((raceCount + 2) / 6);
 
   const regattasWithRaces = regattas
     .filter((regatta) => allRaces.some((race) => race.regattaId === regatta.id))
