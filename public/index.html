@@ -368,6 +368,10 @@
           <label>Regatta
             <select name="regattaSelect" id="regattaSelect"></select>
           </label>
+          <label>
+            <input name="discardsEnabled" id="discardsEnabled" type="checkbox" checked />
+            Apply discard rules for this regatta
+          </label>
           <label id="newRegattaWrap">New Regatta Name
             <input name="newRegattaName" placeholder="e.g. Cyprus Spring Cup" />
           </label>
@@ -465,6 +469,7 @@
       sailorForm: document.getElementById("sailorForm"),
       raceForm: document.getElementById("raceForm"),
       regattaSelect: document.getElementById("regattaSelect"),
+      discardsEnabled: document.getElementById("discardsEnabled"),
       participantsTabBtn: document.getElementById("participantsTabBtn"),
       raceResultsTabBtn: document.getElementById("raceResultsTabBtn"),
       participantsTabPanel: document.getElementById("participantsTabPanel"),
@@ -711,6 +716,7 @@
         dom.regattaSelect.innerHTML = '<option value="__new__">Create new regatta</option>';
         dom.regattaSelect.value = "__new__";
         dom.newRegattaWrap.hidden = false;
+        dom.discardsEnabled.checked = true;
         state.selectedParticipantIds = [];
         renderParticipantsPicker();
         return;
@@ -723,7 +729,18 @@
       dom.regattaSelect.innerHTML = options.join("");
       if (!dom.regattaSelect.value) dom.regattaSelect.value = state.regattas[0].id;
       dom.newRegattaWrap.hidden = dom.regattaSelect.value !== "__new__";
+      syncDiscardsCheckboxFromRegatta();
       renderParticipantsPicker();
+    }
+
+    function syncDiscardsCheckboxFromRegatta() {
+      const selectedRegattaId = dom.regattaSelect.value;
+      if (!selectedRegattaId || selectedRegattaId === "__new__") {
+        dom.discardsEnabled.checked = true;
+        return;
+      }
+      const regatta = state.regattas.find((item) => item.id === selectedRegattaId);
+      dom.discardsEnabled.checked = regatta ? regatta.discardsEnabled !== false : true;
     }
 
     function renderRaceSelect() {
@@ -756,9 +773,11 @@
       if (regatta) {
         dom.regattaSelect.value = regatta.id;
         dom.raceForm.elements.newRegattaName.value = "";
+        dom.discardsEnabled.checked = regatta.discardsEnabled !== false;
       } else {
         dom.regattaSelect.value = "__new__";
         dom.raceForm.elements.newRegattaName.value = race.regattaName || "";
+        dom.discardsEnabled.checked = true;
       }
       dom.newRegattaWrap.hidden = dom.regattaSelect.value !== "__new__";
       const regattaParticipants = state.regattaParticipants[race.regattaId] || [];
@@ -883,7 +902,9 @@
         ? `${regattaInfo.startDate} to ${regattaInfo.endDate}`
         : "No regatta selected";
       const regattaName = regattaInfo ? regattaInfo.name : "Current Regatta";
-      const regattaTitle = `${regattaName} (${regattaRange}) - ${state.currentRegatta.leaderboard.length} sailors, ${state.currentRegatta.races.length} races. Discards: ${state.currentRegatta.discardCount} (1 per 6 races).`;
+      const currentDiscardsMode =
+        regattaInfo && regattaInfo.discardsEnabled === false ? "off" : "on";
+      const regattaTitle = `${regattaName} (${regattaRange}) - ${state.currentRegatta.leaderboard.length} sailors, ${state.currentRegatta.races.length} races. Discards: ${state.currentRegatta.discardCount} (${currentDiscardsMode}).`;
       renderLeaderboardTable(
         dom.currentRegattaWrap,
         state.sailors,
@@ -976,6 +997,22 @@
       dom.lastUpdated.textContent = `Last updated: ${safeDate(state.updatedAt)}`;
     }
 
+    async function persistRegattaDiscardsIfExistingRegatta() {
+      const regattaId = dom.regattaSelect.value;
+      if (!regattaId || regattaId === "__new__") return;
+
+      const discardsEnabled = !!dom.discardsEnabled.checked;
+      const response = await api(`/api/regattas/${regattaId}`, {
+        method: "PUT",
+        body: JSON.stringify({ discardsEnabled })
+      });
+
+      const regatta = state.regattas.find((item) => item.id === regattaId);
+      if (regatta) regatta.discardsEnabled = response.discardsEnabled !== false;
+      state.updatedAt = response.updatedAt || state.updatedAt;
+      dom.lastUpdated.textContent = `Last updated: ${safeDate(state.updatedAt)}`;
+    }
+
     function buildRacePayload() {
       if (state.sailors.length === 0) return { error: "Add sailors before adding races." };
 
@@ -1015,6 +1052,7 @@
         payload: {
           regattaName,
           date: form.get("date"),
+          discardsEnabled: dom.raceForm.elements.discardsEnabled.checked,
           participantIds,
           results,
           sailNumbers
@@ -1097,6 +1135,7 @@
 
     dom.regattaSelect.addEventListener("change", () => {
       dom.newRegattaWrap.hidden = dom.regattaSelect.value !== "__new__";
+      syncDiscardsCheckboxFromRegatta();
       if (dom.regattaSelect.value !== "__new__") {
         dom.raceForm.elements.newRegattaName.value = "";
       }
@@ -1108,6 +1147,16 @@
       renderRaceSelect();
       renderRaceRows();
       setDefaultRaceResults();
+    });
+
+    dom.discardsEnabled.addEventListener("change", async () => {
+      try {
+        await persistRegattaDiscardsIfExistingRegatta();
+        await refresh();
+      } catch (error) {
+        alert(error.message);
+        await refresh();
+      }
     });
 
     dom.addParticipantBtn.addEventListener("click", async () => {

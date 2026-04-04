@@ -273,7 +273,9 @@
         ? `${regattaInfo.startDate} to ${regattaInfo.endDate}`
         : "No regatta selected";
       const regattaName = regattaInfo ? regattaInfo.name : "Current Regatta";
-      const regattaTitle = `${regattaName} (${regattaRange}) - ${state.currentRegatta.leaderboard.length} sailors, ${state.currentRegatta.races.length} races. Discards: ${state.currentRegatta.discardCount} (1 per 6 races).`;
+      const currentDiscardsMode =
+        regattaInfo && regattaInfo.discardsEnabled === false ? "off" : "on";
+      const regattaTitle = `${regattaName} (${regattaRange}) - ${state.currentRegatta.leaderboard.length} sailors, ${state.currentRegatta.races.length} races. Discards: ${state.currentRegatta.discardCount} (${currentDiscardsMode}).`;
 
       renderLeaderboardTable(
         dom.currentRegattaWrap,

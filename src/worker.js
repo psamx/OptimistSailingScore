@@ -145,12 +145,46 @@ async function verifySessionToken(env, token) {
 }
 
 async function ensureRuntimeSchema(env) {
+  await env.DB.batch([
+    env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS sailors (id TEXT PRIMARY KEY, name TEXT NOT NULL, year_of_birth INTEGER, sail_number TEXT DEFAULT '', club TEXT DEFAULT '')"
+    ),
+    env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS races (id TEXT PRIMARY KEY, name TEXT NOT NULL, race_date TEXT NOT NULL, regatta_id TEXT)"
+    ),
+    env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS results (race_id TEXT NOT NULL, sailor_id TEXT NOT NULL, status TEXT NOT NULL, position INTEGER, PRIMARY KEY (race_id, sailor_id))"
+    ),
+    env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    ),
+    env.DB.prepare(
+      "INSERT OR IGNORE INTO app_meta (key, value) VALUES ('updated_at', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"
+    ),
+    env.DB.prepare(
+      "CREATE TABLE IF NOT EXISTS regattas (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, start_date TEXT NOT NULL, end_date TEXT NOT NULL, discards_enabled INTEGER NOT NULL DEFAULT 1)"
+    ),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_results_race_id ON results (race_id)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_results_sailor_id ON results (sailor_id)"),
+    env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_races_regatta_id ON races (regatta_id)")
+  ]);
+
   const sailorColumns = await env.DB.prepare("PRAGMA table_info(sailors)").all();
   const hasYearOfBirth = (sailorColumns.results || []).some(
     (column) => column?.name === "year_of_birth"
   );
   if (!hasYearOfBirth) {
     await env.DB.prepare("ALTER TABLE sailors ADD COLUMN year_of_birth INTEGER").run();
+  }
+
+  const regattaColumns = await env.DB.prepare("PRAGMA table_info(regattas)").all();
+  const hasDiscardsEnabled = (regattaColumns.results || []).some(
+    (column) => column?.name === "discards_enabled"
+  );
+  if (!hasDiscardsEnabled) {
+    await env.DB
+      .prepare("ALTER TABLE regattas ADD COLUMN discards_enabled INTEGER NOT NULL DEFAULT 1")
+      .run();
   }
 
   await env.DB.batch([
@@ -257,26 +291,41 @@ async function refreshRegattaRange(env, regattaId) {
     .run();
 }
 
-async function getOrCreateRegatta(env, regattaName, raceDate) {
+async function getOrCreateRegatta(env, regattaName, raceDate, discardsEnabledArg = undefined) {
+  const normalizedDiscardsEnabled =
+    discardsEnabledArg === undefined ? undefined : discardsEnabledArg ? 1 : 0;
+
   const existing = await env.DB
     .prepare("SELECT id FROM regattas WHERE name = ?")
     .bind(regattaName)
     .first();
 
   if (existing?.id) {
-    await env.DB
-      .prepare(
-        "UPDATE regattas SET start_date = CASE WHEN start_date <= ? THEN start_date ELSE ? END, end_date = CASE WHEN end_date >= ? THEN end_date ELSE ? END WHERE id = ?"
-      )
-      .bind(raceDate, raceDate, raceDate, raceDate, existing.id)
-      .run();
+    if (normalizedDiscardsEnabled === undefined) {
+      await env.DB
+        .prepare(
+          "UPDATE regattas SET start_date = CASE WHEN start_date <= ? THEN start_date ELSE ? END, end_date = CASE WHEN end_date >= ? THEN end_date ELSE ? END WHERE id = ?"
+        )
+        .bind(raceDate, raceDate, raceDate, raceDate, existing.id)
+        .run();
+    } else {
+      await env.DB
+        .prepare(
+          "UPDATE regattas SET start_date = CASE WHEN start_date <= ? THEN start_date ELSE ? END, end_date = CASE WHEN end_date >= ? THEN end_date ELSE ? END, discards_enabled = ? WHERE id = ?"
+        )
+        .bind(raceDate, raceDate, raceDate, raceDate, normalizedDiscardsEnabled, existing.id)
+        .run();
+    }
     return existing.id;
   }
 
   const regattaId = createId("regatta");
+  const discardsEnabled = normalizedDiscardsEnabled === undefined ? 1 : normalizedDiscardsEnabled;
   await env.DB
-    .prepare("INSERT INTO regattas (id, name, start_date, end_date) VALUES (?, ?, ?, ?)")
-    .bind(regattaId, regattaName, raceDate, raceDate)
+    .prepare(
+      "INSERT INTO regattas (id, name, start_date, end_date, discards_enabled) VALUES (?, ?, ?, ?, ?)"
+    )
+    .bind(regattaId, regattaName, raceDate, raceDate, discardsEnabled)
     .run();
 
   return regattaId;
@@ -289,7 +338,7 @@ async function loadState(env) {
       "SELECT id, name, year_of_birth AS yearOfBirth, sail_number AS sailNumber, club FROM sailors ORDER BY name ASC"
     ).all(),
     env.DB.prepare(
-      "SELECT id, name, start_date AS startDate, end_date AS endDate FROM regattas ORDER BY start_date DESC, name ASC"
+      "SELECT id, name, start_date AS startDate, end_date AS endDate, discards_enabled AS discardsEnabled FROM regattas ORDER BY start_date DESC, name ASC"
     ).all(),
     env.DB.prepare(
       "SELECT races.rowid AS createdOrder, races.id, races.name, races.race_date AS date, races.regatta_id AS regattaId, regattas.name AS regattaName FROM races LEFT JOIN regattas ON regattas.id = races.regatta_id ORDER BY races.rowid ASC"
@@ -307,7 +356,10 @@ async function loadState(env) {
   ]);
 
   const sailors = sailorsRows.results || [];
-  const regattas = regattasRows.results || [];
+  const regattas = (regattasRows.results || []).map((regatta) => ({
+    ...regatta,
+    discardsEnabled: Number(regatta.discardsEnabled) !== 0
+  }));
   const regattaCounters = new Map();
   const races = (racesRows.results || []).map((race) => {
     const counter = (regattaCounters.get(race.regattaId) || 0) + 1;
@@ -423,7 +475,8 @@ function calculateLeaderboardForRaces(
   sailors,
   races,
   discardCount,
-  scoringSailorCount = sailors.length
+  scoringSailorCount = sailors.length,
+  discardEligibleRaceIds = null
 ) {
   const sailorCount = scoringSailorCount;
 
@@ -441,9 +494,13 @@ function calculateLeaderboardForRaces(
       };
     });
 
+    const isDiscardEligible = (racePoint) =>
+      !discardEligibleRaceIds || discardEligibleRaceIds.has(racePoint.raceId);
+
     const discardedIndexes = new Set(
       racePointsRaw
-        .map((racePoint, index) => ({ index, points: racePoint.points }))
+        .map((racePoint, index) => ({ index, raceId: racePoint.raceId, points: racePoint.points }))
+        .filter((entry) => isDiscardEligible(entry))
         .sort((a, b) => b.points - a.points || a.index - b.index)
         .slice(0, subsetDiscardCount)
         .map((entry) => entry.index)
@@ -594,6 +651,7 @@ function calculateLeaderboards(state) {
   const currentYear = new Date().getUTCFullYear();
   const regattaParticipants = state.regattaParticipants || {};
   const sailorsById = new Map(sailors.map((sailor) => [sailor.id, sailor]));
+  const regattasById = new Map(regattas.map((regatta) => [regatta.id, regatta]));
   const calculateDiscardCount = (raceCount) => Math.floor(raceCount / 6);
 
   const regattasWithRaces = regattas
@@ -613,12 +671,21 @@ function calculateLeaderboards(state) {
         .filter(Boolean)
         .filter((sailor) => isUnder16ForYear(sailor, currentRegattaYear))
     : [];
-  const currentRegattaDiscardCount = calculateDiscardCount(currentRegattaRaces.length);
+  const currentRegattaDiscardsEnabled = currentRegattaInfo
+    ? currentRegattaInfo.discardsEnabled !== false
+    : true;
+  const currentRegattaDiscardEligibleRaceIds = currentRegattaDiscardsEnabled
+    ? new Set(currentRegattaRaces.map((race) => race.id))
+    : new Set();
+  const currentRegattaDiscardCount = currentRegattaDiscardsEnabled
+    ? calculateDiscardCount(currentRegattaDiscardEligibleRaceIds.size)
+    : 0;
 
   const rankingRaces = allRaces.slice(-18).map((race, index) => ({
     ...race,
     name: `R${index + 1}`
   }));
+  const rankingDiscardEligibleRaceIds = new Set(rankingRaces.map((race) => race.id));
   const rankingReferenceYear = rankingRaces.length
     ? yearFromDateString(rankingRaces[rankingRaces.length - 1].date, currentYear)
     : currentYear;
@@ -642,20 +709,23 @@ function calculateLeaderboards(state) {
           id: currentRegattaInfo.id,
           name: currentRegattaInfo.name,
           startDate: currentRegattaInfo.startDate,
-          endDate: currentRegattaInfo.endDate
+          endDate: currentRegattaInfo.endDate,
+          discardsEnabled: currentRegattaInfo.discardsEnabled !== false
         }
       : null,
     currentRegatta: calculateLeaderboardForRaces(
       currentRegattaSailors,
       currentRegattaRaces,
       currentRegattaDiscardCount,
-      currentRegattaSailors.length
+      currentRegattaSailors.length,
+      currentRegattaDiscardEligibleRaceIds
     ),
     rankingList: calculateLeaderboardForRaces(
       rankingEligibleSailors,
       rankingRaces,
       rankingDiscardCount,
-      sailors.length
+      sailors.length,
+      rankingDiscardEligibleRaceIds
     )
   };
 }
@@ -1027,12 +1097,43 @@ export default {
       return json({ regattaId, participantIds: savedParticipantIds, updatedAt }, 200);
     }
 
+    if (
+      request.method === "PUT" &&
+      url.pathname.startsWith("/api/regattas/") &&
+      !url.pathname.endsWith("/participants")
+    ) {
+      const parts = url.pathname.split("/");
+      const regattaId = parts[3];
+      if (!regattaId) return badRequest("Regatta id is required.");
+
+      const regatta = await env.DB
+        .prepare("SELECT id FROM regattas WHERE id = ?")
+        .bind(regattaId)
+        .first();
+      if (!regatta) return badRequest("Regatta not found.");
+
+      const body = await parseJson(request);
+      if (!body || !Object.prototype.hasOwnProperty.call(body, "discardsEnabled")) {
+        return badRequest("discardsEnabled is required.");
+      }
+      const discardsEnabled = body.discardsEnabled !== false ? 1 : 0;
+
+      await env.DB
+        .prepare("UPDATE regattas SET discards_enabled = ? WHERE id = ?")
+        .bind(discardsEnabled, regattaId)
+        .run();
+
+      const updatedAt = await touchUpdatedAt(env);
+      return json({ regattaId, discardsEnabled: discardsEnabled === 1, updatedAt }, 200);
+    }
+
     if (request.method === "POST" && url.pathname === "/api/races") {
       const body = await parseJson(request);
       const regattaName = typeof body?.regattaName === "string" ? body.regattaName.trim() : "";
       const raceDate = body?.date || new Date().toISOString().slice(0, 10);
       const sailNumbers = Array.isArray(body?.sailNumbers) ? body.sailNumbers : [];
       const requestedParticipants = Array.isArray(body?.participantIds) ? body.participantIds : [];
+      const discardsEnabled = body?.discardsEnabled !== false;
 
       if (!regattaName) return badRequest("Regatta name is required.");
 
@@ -1042,7 +1143,7 @@ export default {
         return badRequest("Add sailors before submitting race results.");
       }
 
-      const regattaId = await getOrCreateRegatta(env, regattaName, raceDate);
+      const regattaId = await getOrCreateRegatta(env, regattaName, raceDate, discardsEnabled);
       let participantIds = requestedParticipants.filter((id) => sailorIds.includes(id));
       if (participantIds.length === 0) {
         participantIds = await loadRegattaParticipantIds(env, regattaId);
@@ -1109,6 +1210,7 @@ export default {
       const raceDate = body?.date || new Date().toISOString().slice(0, 10);
       const sailNumbers = Array.isArray(body?.sailNumbers) ? body.sailNumbers : [];
       const requestedParticipants = Array.isArray(body?.participantIds) ? body.participantIds : [];
+      const discardsEnabled = body?.discardsEnabled !== false;
 
       if (!regattaName) return badRequest("Regatta name is required.");
 
@@ -1118,7 +1220,7 @@ export default {
         return badRequest("Add sailors before submitting race results.");
       }
 
-      const newRegattaId = await getOrCreateRegatta(env, regattaName, raceDate);
+      const newRegattaId = await getOrCreateRegatta(env, regattaName, raceDate, discardsEnabled);
       let participantIds = requestedParticipants.filter((id) => sailorIds.includes(id));
       if (participantIds.length === 0) {
         participantIds = await loadRegattaParticipantIds(env, newRegattaId);
