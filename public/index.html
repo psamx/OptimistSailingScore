@@ -649,13 +649,27 @@
     function renderRaceRows() {
       const participantIds = getSelectedRegattaParticipantIds();
       const participants = state.sailors.filter((sailor) => participantIds.includes(sailor.id));
+      const currentRegattaRankIndexBySailorId = new Map(
+        (state.currentRegatta?.leaderboard || []).map((entry, index) => [entry.sailor.id, index])
+      );
+      const orderedParticipants = [...participants].sort((a, b) => {
+        const aRankIndex = currentRegattaRankIndexBySailorId.has(a.id)
+          ? currentRegattaRankIndexBySailorId.get(a.id)
+          : Number.POSITIVE_INFINITY;
+        const bRankIndex = currentRegattaRankIndexBySailorId.has(b.id)
+          ? currentRegattaRankIndexBySailorId.get(b.id)
+          : Number.POSITIVE_INFINITY;
+
+        if (aRankIndex !== bRankIndex) return aRankIndex - bRankIndex;
+        return a.name.localeCompare(b.name);
+      });
       if (participants.length === 0) {
         dom.resultsGrid.innerHTML = '<span class="small muted">Select regatta participants first.</span>';
         return;
       }
 
       const selectedRegattaId = dom.regattaSelect?.value;
-      dom.resultsGrid.innerHTML = participants.map((s) => `
+      dom.resultsGrid.innerHTML = orderedParticipants.map((s) => `
         <div class="result-row" data-sailor-row="${s.id}">
           <strong>${escapeHtml(s.name)}${formatYearOfBirth(s.yearOfBirth) ? ` (${escapeHtml(formatYearOfBirth(s.yearOfBirth))})` : ""}</strong>
           <select name="status_${s.id}">
